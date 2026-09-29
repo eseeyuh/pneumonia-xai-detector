@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pxai"
+version = "0.2.0"
+description = "Explainable, uncertainty-aware pneumonia triage from chest X-rays (DenseNet-121, Grad-CAM, MC-Dropout)."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Daryn Shaidarov" }]
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "numpy>=1.24",
+    "pillow>=10.0",
+    "matplotlib>=3.7",
+    "pyyaml>=6.0",
+    "huggingface_hub>=0.20",
+]
+
+[project.optional-dependencies]
+research = [
+    "scikit-learn>=1.3",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "pydicom>=2.4",
+]
+app = ["streamlit>=1.50"]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "python-multipart>=0.0.9"]
+dev = ["pytest>=8.0", "ruff>=0.5", "httpx>=0.27"]
+
+[project.scripts]
+pxai-split = "pxai.data:main"
+pxai-train = "pxai.train:main"
+pxai-evaluate = "pxai.evaluate:main"
+
+[tool.setuptools.packages.find]
+include = ["pxai*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501", "SIM300"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.File", "fastapi.Query", "fastapi.Depends"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,8 +1,30 @@
-best.pt
+# Data, weights and experiment outputs never go into git
+data/
+runs/
+results/
+wandb/
 *.pt
 *.pth
+*.ckpt
+*.onnx
 *.h5
+*.dcm
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Environments & editors
 .env
+.venv/
 venv/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

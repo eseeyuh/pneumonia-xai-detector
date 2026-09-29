@@ -1,0 +1,29 @@
+# Default experiment. Override any key from the CLI, e.g.
+#   python -m pxai.train --config configs/default.yaml --set seed=1 train.epochs=30
+
+seed: 42
+data:
+  root: data/chest_xray              # Kermany tree: <split>/<NORMAL|PNEUMONIA>/*.jpeg
+  manifest: data/splits/kermany.csv  # produced by `python -m pxai.data`
+  image_size: 224
+  resize_mode: squash                # squash (matches released weights) | letterbox
+  hflip: false
+  num_workers: 4
+model:
+  dropout: 0.3
+  pretrained: true                   # ImageNet initialisation
+train:
+  epochs: 25
+  batch_size: 32
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  warmup_epochs: 1
+  class_weighting: true              # inverse-frequency CE weights
+  label_smoothing: 0.0
+  amp: true
+  early_stopping_patience: 6
+  monitor: val_auc
+output_dir: runs/densenet121_seed42
+wandb:
+  enabled: false
+  project: pneumonia-xai

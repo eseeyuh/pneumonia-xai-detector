@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Explainable Pneumonia Triage from Chest X-Rays"
+authors:
+  - family-names: Shaidarov
+    given-names: Daryn
+    affiliation: University of Portsmouth
+version: 0.2.0
+license: MIT
+repository-code: "https://github.com/eseeyuh/pneumonia-xai-detector"
+keywords:
+  - explainable AI
+  - uncertainty quantification
+  - chest X-ray
+  - pneumonia
+  - Grad-CAM
+  - MC-Dropout

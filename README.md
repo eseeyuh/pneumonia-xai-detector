@@ -1,126 +1,164 @@
-[![Live Demo](https://img.shields.io/badge/Live-Demo-FF4B4B)](https://pneumonia-xai-detector-7wm8j5lwmpnfbs4sedyhdo.streamlit.app)
+<div align="center">
+
+# Explainable Pneumonia Triage from Chest X-rays
+
+DenseNet-121 · Grad-CAM · MC-Dropout uncertainty · selective referral
+
+[![CI](https://github.com/eseeyuh/pneumonia-xai-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/eseeyuh/pneumonia-xai-detector/actions/workflows/ci.yml)
+[![Live demo](https://img.shields.io/badge/Live-Demo-FF4B4B)](https://pneumonia-xai-detector-7wm8j5lwmpnfbs4sedyhdo.streamlit.app)
+[![Model](https://img.shields.io/badge/%F0%9F%A4%97-weights-yellow)](https://huggingface.co/eseeyuh/pneumonia-xai-detector)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)
+
+</div>
+
+A classifier that says *pneumonia / normal* is not enough for triage. This project asks three questions of every prediction:
+
+1. **What does the model predict?** DenseNet-121 fine-tuned on paediatric chest X-rays.
+2. **Why?** Grad-CAM maps, evaluated *quantitatively* against radiologist bounding boxes, not just shown.
+3. **Should a human look at this case?** MC-Dropout uncertainty decides which cases are referred, and risk–coverage analysis measures whether that referral actually removes errors.
 
 ![Demo](demo.png)
 
-# XAI Pneumonia Detector
+> [!IMPORTANT]
+> **v0.2: the pipeline was rebuilt and all results are being recomputed.**
+> The metrics published with v0.1 (AUC 0.9975, accuracy 0.9676) came from a re-split of the pooled Kermany dataset that was not verified to be patient-level. The dataset contains several images per child, so the same patient may have appeared in both training and test data, and the original training code is no longer available to check. Those numbers are withdrawn until recomputed. The new pipeline splits strictly by patient, keeps the official test set intact, and reports confidence intervals and external validation. See [docs/PAPER_PROTOCOL.md](docs/PAPER_PROTOCOL.md).
 
-A Streamlit web app that wraps a trained DenseNet-121 model for pneumonia detection in chest X-rays. Upload a scan and get three things back: a classification, a Grad-CAM heatmap showing where the model looked, and an MC-Dropout uncertainty estimate.
-
----
-
-## What it does
-
-- Classifies a chest X-ray as **NORMAL** or **PNEUMONIA**
-- Shows class probabilities from a standard forward pass
-- Overlays a **Grad-CAM** heatmap on the input image
-- Runs **T stochastic forward passes** (MC-Dropout) to estimate prediction uncertainty via entropy and variance
+> [!WARNING]
+> Research prototype, **not a medical device**. Trained on children aged 1–5 from a single hospital; not validated for clinical use.
 
 ---
 
-## Results
+## What's inside
 
-| Metric | This model | Kermany et al. baseline |
-|--------|-----------|------------------------|
-| AUC-ROC | **0.9975** | 0.968 |
-| Accuracy | **0.9676** | 0.928 |
-| F1 | **0.9774** | 0.916 |
-| Precision | **0.9976** | 0.901 |
+| Area | What it does |
+|---|---|
+| **Leak-free data** | Patient IDs parsed from Kermany filenames; patient-level splits; training refuses to start if any patient is shared between splits; `--audit` measures how much a naive split would leak |
+| **Honest evaluation** | Operating point, temperature and referral threshold fitted on *validation*, frozen for test; patient-level (cluster) bootstrap 95% CIs; sensitivity-targeted threshold for triage |
+| **Uncertainty** | MC-Dropout (predictive entropy, mutual information, variance) vs. max-softmax, softmax entropy, test-time augmentation and a deep ensemble; AURC, E-AURC, accuracy at fixed coverage |
+| **Calibration** | ECE, Brier, NLL, reliability diagrams, temperature scaling |
+| **Explainability** | Grad-CAM and Grad-CAM++ scored with pointing game, energy-in-box and IoU against RSNA boxes, plus the Adebayo et al. model-randomisation sanity check |
+| **External validation** | RSNA Pneumonia Detection Challenge (adults, different hospital) with the frozen operating point |
+| **Serving** | Streamlit demo, FastAPI endpoint, Docker image; thread-safe inference, DICOM and 16-bit PNG input |
 
-Deferring the 30% most uncertain cases (by predictive entropy) raises retained accuracy to **0.998**. At 40% deferral the retained set hits 100%.
+### One engineering detail worth knowing
 
----
+Dropout lives only in the classifier head, so MC-Dropout does not need T full forward passes: the backbone runs once and only the 1024→2 head is resampled. The result is mathematically identical (checked by a unit test) and **33× faster** on CPU for T = 30 (3.1 s → 0.09 s). Because the model is never switched into train mode, it is also safe to share between concurrent users.
 
-## Research paper
+## Pipeline
 
-**Explainable Pneumonia Triage from Chest X-Rays**  
-Daryn Shaidarov — University of Portsmouth, 2025  
-Supervised by Dr Alexander Gegov, Reader in Explainable AI
+```mermaid
+flowchart LR
+    A[Kermany images] --> B[Patient-level split<br/>pxai.data]
+    B --> C[Train 5 seeds<br/>pxai.train]
+    C --> D[Fit on val:<br/>threshold · temperature · referral cut-off]
+    D --> E[Test: metrics + CIs<br/>calibration · risk–coverage]
+    D --> F[RSNA external test<br/>frozen operating point]
+    F --> G[Grad-CAM vs radiologist boxes<br/>+ sanity check]
+    D --> H[configs/operating_point.json]
+    H --> I[Streamlit demo / FastAPI]
+```
 
-*arXiv preprint — link coming soon*
-
----
-
-## Setup
-
-### 1. Download the model weights
+## Quick start
 
 ```bash
-wget https://huggingface.co/eseeyuh/pneumonia-xai-detector/resolve/main/best.pt
-```
-
-Or download manually from
-[Hugging Face](https://huggingface.co/eseeyuh/pneumonia-xai-detector)
-and place `best.pt` in the root directory.
-
-### 2. Put everything in one folder
-
-```
-project/
-├── app.py
-├── requirements.txt
-├── README.md
-└── best.pt
-```
-
-`best.pt` needs to sit next to `app.py` — the path is hardcoded.
-
-### 3. Install dependencies
-
-```bash
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+git clone https://github.com/eseeyuh/pneumonia-xai-detector.git
+cd pneumonia-xai-detector
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-First install takes a few minutes because of PyTorch.
-
-### 4. Run
-
-```bash
 streamlit run app.py
 ```
 
-Opens at `http://localhost:8501`.
+Weights download automatically from the Hugging Face Hub on first run. To use a local file: `PXAI_WEIGHTS=path/to/best.pt streamlit run app.py`.
 
----
+**REST API**
 
-## Usage
+```bash
+pip install -e ".[api]"
+uvicorn api.main:app --port 8000
+curl -F "file=@xray.png" "http://localhost:8000/predict?mc_samples=30"
+```
 
-Upload a `.jpg` or `.png` chest X-ray using the file uploader. Results appear in a few seconds.
+**Docker**
 
-**Reading the output:**
-- **Probabilities** — single deterministic forward pass
-- **Grad-CAM** — warm (red) regions had the most influence on the prediction. For true pneumonia cases these should land on the lung fields, not on image borders or scanner annotations
-- **Entropy** — 0 means the model is certain, 0.693 is maximum uncertainty for a binary classifier. A wide histogram spread means the model is unsure and the case probably warrants a second look
+```bash
+docker build -t pxai .
+docker run -p 8501:8501 pxai                                                # demo
+docker run -p 8000:8000 pxai uvicorn api.main:app --host 0.0.0.0 --port 8000 # API
+```
 
-You can adjust the number of MC-Dropout passes (T) and toggle Grad-CAM on/off in the sidebar.
+## Reproducing the paper
 
----
+The easiest route is the Colab notebook [`notebooks/reproduce_colab.ipynb`](notebooks/reproduce_colab.ipynb). The same steps from a terminal:
 
-## Troubleshooting
+```bash
+pip install -e ".[research]"
 
-**`Model weights best.pt not found`** — `best.pt` is not in the same folder as `app.py`. Go back to step 1.
+# 1. data: Kaggle "paultimothymooney/chest-xray-pneumonia" → data/chest_xray
+python -m pxai.data --root data/chest_xray --audit          # leakage of a naive split
+python -m pxai.data --root data/chest_xray --mode official --out data/splits/kermany.csv
 
-**`load_state_dict` key mismatch** — the weights are from a different architecture. Make sure `best.pt` comes from this notebook specifically (DenseNet-121 with `Dropout(0.3) → Linear(..., 2)` head).
+# 2. train five seeds
+for s in 42 1 2 3 4; do
+  python -m pxai.train --config configs/default.yaml --set seed=$s output_dir=runs/seed$s
+done
 
-**Grad-CAM import error** — run `pip install --upgrade grad-cam opencv-python-headless`, or just uncheck "Compute Grad-CAM" in the sidebar. Predictions and uncertainty still work without it.
+# 3. internal test (operating point fitted on val)
+python -m pxai.evaluate --manifest data/splits/kermany.csv --root data/chest_xray \
+  --checkpoints runs/seed{42,1,2,3,4}/best.pt --tta-samples 16 --out results/kermany
 
-**No GPU** — fine, the app runs on CPU. It'll be a bit slower but works the same. The sidebar shows the active device.
+# 4. external test + saliency evaluation on RSNA
+python scripts/prepare_rsna.py --rsna-dir data/rsna --out-dir data/rsna_png
+python -m pxai.evaluate --manifest data/splits/rsna.csv --root . \
+  --checkpoints runs/seed42/best.pt --operating-point results/kermany/operating_point.json --out results/rsna
+python scripts/eval_saliency.py --manifest data/splits/rsna.csv --boxes data/splits/rsna_boxes.csv \
+  --checkpoint runs/seed42/best.pt --out results/saliency
+```
 
----
+Each run writes `metrics.json`, per-image `predictions_*.csv`, `operating_point.json` and PNG/PDF figures (ROC, reliability, risk–coverage). Copy `results/kermany/operating_point.json` to `configs/` and the demo will use the calibrated threshold.
 
-## Model details
+## Results
 
-| Parameter | Value |
-|-----------|-------|
-| Architecture | DenseNet-121, head: `Dropout(0.3) + Linear → 2` |
-| Input | 224×224 RGB, ImageNet normalisation |
-| Grad-CAM target layer | `model.features[-1]` |
-| MC-Dropout | T passes, only Dropout layers active |
-| Uncertainty metrics | Predictive entropy, variance of P(pneumonia) |
+*Being recomputed under the v0.2 protocol.* The table below will be filled from `results/*/metrics.json`.
 
----
+| Test set | AUC [95% CI] | Sensitivity | Specificity | ECE (after T-scaling) | Acc. at 80% coverage |
+|---|---|---|---|---|---|
+| Kermany official test (paediatric) | – | – | – | – | – |
+| RSNA (adult, external) | – | – | – | – | – |
 
-## Tech stack
+## Repository layout
 
-Python · PyTorch · Streamlit · pytorch-grad-cam · NumPy · Pillow · Matplotlib
+```
+pxai/                 library: data, model, uncertainty, metrics, xai, train, evaluate, inference
+scripts/              RSNA preparation, saliency evaluation
+configs/              experiment config (+ operating_point.json once evaluated)
+notebooks/            Colab reproduction notebook
+app.py                Streamlit demo
+api/                  FastAPI service
+tests/                35 unit and end-to-end tests (CPU, no data needed)
+docs/                 paper protocol, roadmap, model card
+```
+
+## Limitations and intended use
+
+- **Population.** Kermany contains children aged 1–5 from one hospital in Guangzhou. Performance on adults, other scanners and other hospitals is expected to be lower; the RSNA experiment measures how much lower.
+- **Labels.** Image-level labels from the original dataset; no radiologist re-reading.
+- **Shortcut learning.** Paediatric datasets are known to contain non-anatomical cues (markers, positioning, image borders). Grad-CAM is used to look for them, but saliency maps cannot prove their absence.
+- **Uncertainty is not out-of-distribution detection.** A confident prediction on an unusual image is still possible; the demo only flags obviously wrong inputs (colour photos, extreme aspect ratios).
+- **Intended use:** research and education. Not for diagnosis.
+
+## Citation
+
+```bibtex
+@misc{shaidarov2025pneumonia,
+  title  = {Explainable Pneumonia Triage from Chest X-Rays},
+  author = {Shaidarov, Daryn},
+  year   = {2025},
+  note   = {University of Portsmouth. Supervised by Dr Alexander Gegov.},
+  url    = {https://github.com/eseeyuh/pneumonia-xai-detector}
+}
+```
+
+## Acknowledgements
+
+Data: Kermany, Zhang & Goldbaum, *Labeled Optical Coherence Tomography (OCT) and Chest X-Ray Images for Classification*, Mendeley Data (CC BY 4.0); RSNA Pneumonia Detection Challenge (RSNA / NIH). Supervision: Dr Alexander Gegov, University of Portsmouth.

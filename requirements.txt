@@ -1,8 +1,11 @@
-streamlit>=1.30
-torch>=2.0
-torchvision>=0.15
-grad-cam>=1.5.0
-opencv-python-headless>=4.8
-pillow>=9.0
-numpy>=1.24
+# Runtime dependencies for the Streamlit demo (used by Streamlit Community Cloud).
+# Research / API / dev extras: `pip install -e ".[research,api,dev]"`
+streamlit>=1.50,<2
+torch>=2.1
+torchvision>=0.16
+numpy>=1.24,<3
+pillow>=10.0
 matplotlib>=3.7
+pyyaml>=6.0
+huggingface_hub>=0.20
+pydicom>=2.4
